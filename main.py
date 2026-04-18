@@ -38,6 +38,31 @@ REQUIRED_FIELDS = [
 ]
 
 
+@app.on_event("startup")
+async def startup_test():
+    import logging
+    from google import genai as genai_client
+
+    logger = logging.getLogger("startup")
+    key = os.getenv('GEMINI_API_KEY')
+    logger.info(f"[STARTUP] Gemini key: {bool(key)}")
+    if not key:
+        logger.warning(
+            "[STARTUP] No key - Tesseract only mode")
+        return
+
+    try:
+        client = genai_client.Client(api_key=key)
+        r = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=["Reply with exactly: READY"]
+        )
+        logger.info(
+            f"[STARTUP] Gemini test: {r.text.strip()}")
+    except Exception as e:
+        logger.error(f"[STARTUP] Gemini ERROR: {e}")
+
+
 def merge_page_results(results: list[dict]) -> dict:
     valid_results = [r for r in results if isinstance(r, dict)]
     if not valid_results:
