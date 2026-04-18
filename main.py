@@ -41,26 +41,54 @@ REQUIRED_FIELDS = [
 @app.on_event("startup")
 async def startup_test():
     import logging
-    from google import genai as genai_client
 
     logger = logging.getLogger("startup")
-    key = os.getenv('GEMINI_API_KEY')
-    logger.info(f"[STARTUP] Gemini key: {bool(key)}")
-    if not key:
-        logger.warning(
-            "[STARTUP] No key - Tesseract only mode")
-        return
 
+    # Test OpenAI
     try:
-        client = genai_client.Client(api_key=key)
-        r = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=["Reply with exactly: READY"]
-        )
-        logger.info(
-            f"[STARTUP] Gemini test: {r.text.strip()}")
-    except Exception as e:
-        logger.error(f"[STARTUP] Gemini ERROR: {e}")
+        import openai
+        openai_key = os.getenv('OPENAI_API_KEY')
+        logger.info(f"[STARTUP] OpenAI key: {bool(openai_key)}")
+        if openai_key:
+            try:
+                client = openai.OpenAI(api_key=openai_key)
+                response = client.chat.completions.create(
+                    model="gpt-4o",
+                    max_tokens=10,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": "Reply with exactly: READY"
+                        }
+                    ],
+                )
+                logger.info(f"[STARTUP] OpenAI test: {response.choices[0].message.content.strip()}")
+            except Exception as e:
+                logger.error(f"[STARTUP] OpenAI ERROR: {e}")
+    except ImportError:
+        logger.warning("[STARTUP] OpenAI library not installed")
+
+    # Test Gemini
+    try:
+        from google import genai as genai_client
+        gemini_key = os.getenv('GEMINI_API_KEY')
+        logger.info(f"[STARTUP] Gemini key: {bool(gemini_key)}")
+        if gemini_key:
+            try:
+                client = genai_client.Client(api_key=gemini_key)
+                response = client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=["Reply with exactly: READY"]
+                )
+                logger.info(f"[STARTUP] Gemini test: {response.text.strip()}")
+            except Exception as e:
+                logger.error(f"[STARTUP] Gemini ERROR: {e}")
+    except ImportError:
+        logger.warning("[STARTUP] Gemini library not installed")
+
+    if not (os.getenv('OPENAI_API_KEY') or os.getenv('GEMINI_API_KEY')):
+        logger.warning("[STARTUP] No API keys configured - Tesseract only mode")
+
 
 
 def merge_page_results(results: list[dict]) -> dict:
