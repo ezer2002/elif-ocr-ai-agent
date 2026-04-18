@@ -1,6 +1,7 @@
 import os
 import uuid
 import shutil
+from datetime import datetime
 from pathlib import Path
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,6 +28,102 @@ app.add_middleware(
 
 UPLOAD_DIR = Path("temp_uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
+
+REQUIRED_FIELDS = [
+    'documentNumber',
+    'holderName',
+    'issueDate',
+    'expiryDate',
+    'issuingOrganization',
+]
+
+
+def merge_page_results(results: list[dict]) -> dict:
+    valid_results = [r for r in results if isinstance(r, dict)]
+    if not valid_results:
+        return {
+            'isRelevantDocument': True,
+            'documentNumber': None,
+            'holderName': None,
+            'issueDate': None,
+            'expiryDate': None,
+            'issuingOrganization': None,
+            'detectedDocumentType': None,
+            'confidence': 0.0,
+            'rawExtractedText': '',
+            'missingFields': REQUIRED_FIELDS.copy(),
+            'isExpired': False,
+            'documentQuality': 'POOR',
+            'warnings': ['Could not extract data from any PDF page.'],
+            'rejectionReason': None,
+            'source': 'unavailable',
+        }
+
+    relevant = [r for r in valid_results if r.get('isRelevantDocument') is not False]
+    if not relevant:
+        return valid_results[0]
+
+    def score(item: dict) -> tuple:
+        found_count = sum(1 for field in REQUIRED_FIELDS if item.get(field))
+        return (found_count, float(item.get('confidence') or 0.0))
+
+    ranked = sorted(relevant, key=score, reverse=True)
+    merged = dict(ranked[0])
+
+    for field in [
+        'documentNumber', 'holderName', 'petName',
+        'issueDate', 'expiryDate', 'issuingOrganization',
+        'detectedDocumentType', 'rawExtractedText',
+        'documentQuality', 'rejectionReason'
+    ]:
+        if merged.get(field):
+            continue
+        for item in ranked[1:]:
+            if item.get(field):
+                merged[field] = item.get(field)
+                break
+
+    warnings = []
+    for item in ranked:
+        for warning in (item.get('warnings') or []):
+            if warning not in warnings:
+                warnings.append(warning)
+    merged['warnings'] = warnings
+
+    merged['source'] = 'gemini' if any(
+        item.get('source') == 'gemini' for item in ranked
+    ) else (merged.get('source') or 'tesseract_fallback')
+
+    merged['missingFields'] = [
+        field for field in REQUIRED_FIELDS if not merged.get(field)
+    ]
+
+    merged['isRelevantDocument'] = True
+    merged['confidence'] = round(max(
+        float(item.get('confidence') or 0.0) for item in ranked
+    ), 2)
+
+    expiry_value = merged.get('expiryDate')
+    if expiry_value:
+        try:
+            expiry_dt = datetime.strptime(expiry_value, '%Y-%m-%d')
+            merged['isExpired'] = expiry_dt < datetime.now()
+        except Exception:
+            merged['isExpired'] = bool(
+                any(item.get('isExpired') for item in ranked)
+            )
+    else:
+        merged['isExpired'] = False
+
+    if not merged.get('documentQuality'):
+        conf = float(merged.get('confidence') or 0.0)
+        merged['documentQuality'] = (
+            'GOOD' if conf >= 0.85
+            else 'MEDIUM' if conf >= 0.40
+            else 'POOR'
+        )
+
+    return merged
 
 @app.get("/health")
 def health_check():
@@ -64,9 +161,12 @@ async def analyze_document_endpoint(
                 from pdf2image import convert_from_path
                 images = convert_from_path(str(temp_path))
                 if images:
-                    img_path = str(temp_path) + '.png'
-                    images[0].save(img_path, 'PNG')
-                    temp_path_img = Path(img_path)
+                    page_paths = []
+                    for idx, image in enumerate(images, start=1):
+                        img_path = UPLOAD_DIR / f"{temp_path.stem}_page_{idx}.png"
+                        image.save(str(img_path), 'PNG')
+                        page_paths.append(img_path)
+                    temp_path_img = page_paths
                 else:
                     return JSONResponse(
                         status_code=400,
@@ -80,8 +180,16 @@ async def analyze_document_endpoint(
         else:
             temp_path_img = temp_path
 
-        result = analyze_document(
-            str(temp_path_img), documentType)
+        if isinstance(temp_path_img, list):
+            page_results = []
+            for page_path in temp_path_img:
+                page_results.append(
+                    analyze_document(str(page_path), documentType)
+                )
+            result = merge_page_results(page_results)
+        else:
+            result = analyze_document(
+                str(temp_path_img), documentType)
 
         return JSONResponse(content={
             'success': True,
@@ -102,7 +210,14 @@ async def analyze_document_endpoint(
                 Path(temp_path).unlink()
             except:
                 pass
-        if temp_path_img and Path(temp_path_img).exists():
+        if isinstance(temp_path_img, list):
+            for path_item in temp_path_img:
+                try:
+                    if Path(path_item).exists():
+                        Path(path_item).unlink()
+                except:
+                    pass
+        elif temp_path_img and Path(temp_path_img).exists():
             try:
                 Path(temp_path_img).unlink()
             except:
