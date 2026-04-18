@@ -19,7 +19,7 @@ load_dotenv()
 
 TESSERACT_CMD = os.getenv(
     'TESSERACT_CMD',
-    r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+    '/usr/bin/tesseract' if os.name != 'nt' else r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 )
 pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
 

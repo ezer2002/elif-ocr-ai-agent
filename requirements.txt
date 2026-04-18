@@ -1,7 +1,10 @@
 fastapi
-uvicorn
+uvicorn[standard]
 python-multipart
 google-generativeai
+google-genai
 pytesseract
 pdf2image
 pillow
+python-dotenv
+openai

@@ -20,7 +20,6 @@ It uses Google Gemini 1.5 Flash first, then falls back to Tesseract OCR and rege
 - [🔁 OCR Pipeline](#-ocr-pipeline)
 - [🗂️ Project Structure](#-project-structure)
 - [🔗 Integration](#-integration)
-- [📄 License](#-license)
 
 ## ✨ Features
 
@@ -70,8 +69,11 @@ Gemini 1.5 Flash   Tesseract OCR
 
 ## 📋 Prerequisites
 
-Before running the service, make sure the following are installed:
+### Option 1: Docker (Recommended — No Manual Setup)
+- Docker Desktop installed
+- Access to a Google Gemini API key (and OpenAI key for Level 1 OCR, optional)
 
+### Option 2: Local Python Development
 - Python 3.8 or later
 - Tesseract OCR binary for Windows
 - Poppler for Windows, required by `pdf2image`
@@ -129,6 +131,84 @@ Or start it with Uvicorn:
 ```bash
 uvicorn main:app --reload --port 8000
 ```
+
+## 🐳 Running with Docker
+
+### Recommended Approach (Zero Local Setup)
+
+Docker eliminates the need for manual Python, Tesseract, and Poppler installation on your machine.
+
+#### First Time Setup
+
+1. **Copy the environment template:**
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **Fill in your API keys in `.env`:**
+   ```env
+   GEMINI_API_KEY=your_actual_gemini_key_here
+   OPENAI_API_KEY=your_actual_openai_key_here (optional)
+   OCR_PORT=8000
+   ```
+
+3. **Build and start the service:**
+   ```bash
+   docker compose up --build
+   ```
+
+#### Every Time After
+
+```bash
+docker compose up
+```
+
+#### Stop the service
+
+```bash
+docker compose down
+```
+
+#### View logs
+
+```bash
+docker compose logs -f
+```
+
+#### What Happens Inside the Container
+
+- ✅ Python 3.11 environment
+- ✅ Tesseract OCR + French language pack
+- ✅ Poppler utilities for PDF handling
+- ✅ All Python dependencies installed
+- ✅ Service runs on `http://localhost:8000`
+
+#### Verify It's Running
+
+Open your browser or use curl:
+
+```bash
+curl http://localhost:8000/health
+```
+
+Expected response:
+```json
+{"status": "ok", "gemini_key": true, "openai_key": false}
+```
+
+#### Troubleshooting
+
+- **Port 8000 already in use?**
+  - Edit `docker-compose.yml` and change `8000:8000` to `8001:8000` for example
+  
+- **API keys not working?**
+  - Verify they're in `.env` (NOT `.env.example`)
+  - Restart the container: `docker compose down && docker compose up`
+  
+- **View container logs:**
+  ```bash
+  docker compose logs elif-ocr-agent
+  ```
 
 ## 🌍 Environment Variables
 

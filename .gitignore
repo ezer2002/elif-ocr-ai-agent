@@ -1,3 +1,15 @@
+# Environment & secrets
+.env
+.env.local
+
+# Uploads and temp files
+temp_uploads/
+*.zip
+*.pdf
+*.png
+*.jpg
+*.jpeg
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
