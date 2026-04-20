@@ -24,6 +24,7 @@ TESSERACT_CMD = os.getenv(
 pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 REQUIRED_FIELDS = [
     'documentNumber',
@@ -63,8 +64,11 @@ def extract_with_openai(image_path: str, document_type: str) -> dict:
         return None
 
     try:
+        print(os.getenv('OPENAI_API_KEY'))
         api_key = os.getenv('OPENAI_API_KEY')
         logger.info(f"[OCR] OpenAI key present: {bool(api_key)}")
+        logger.info(f"[OCR] OpenAI key starts with: {api_key[:8] if api_key else 'MISSING'}")
+        logger.warning(f"[OCR] OpenAI key starts with: {api_key[:8] if api_key else 'MISSING'}")
 
         if not api_key:
             logger.warning("[OCR] No OPENAI_API_KEY - skipping")
@@ -136,13 +140,15 @@ Analyze this document and return ONLY valid JSON (no markdown):
         result = json.loads(text)
         result['source'] = 'openai'
         logger.info(f"[OCR] OpenAI Confidence: {result.get('confidence', 0)}")
+        logger.info(f"[OCR] ✅ OpenAI SUCCESS — used as Level 1 — confidence: {result.get('confidence')}")
+        logger.warning(f"[OCR] ✅ OpenAI SUCCESS — used as Level 1 — confidence: {result.get('confidence')}")
         return result
 
     except json.JSONDecodeError as e:
-        logger.error(f"[OCR] OpenAI JSON parse error: {e}")
+        logger.exception(f"[OCR] OpenAI JSON parse error: {e}")
         return None
     except Exception as e:
-        logger.error(f"[OCR] OpenAI error: {e}")
+        logger.exception(f"[OCR] OpenAI error: {e}")
         return None
 
 
@@ -390,27 +396,20 @@ def normalize_result(result: dict, document_type: str = 'UNKNOWN') -> dict:
 
 
 def analyze_document(image_path: str, document_type: str = 'UNKNOWN') -> dict:
-    # === LEVEL 1 TEMPORARILY DISABLED (OpenAI — uncomment to activate) ===
-    # result = extract_with_openai(image_path, document_type)
-    # if result and result.get('confidence', 0) > 0.4:
-    #     return result
-    # logger.warning("[OCR] OpenAI failed — trying Gemini")
+    logger.info("[OCR] === LEVEL 1: Trying OpenAI ===")
+    logger.warning("[OCR] === LEVEL 1: Trying OpenAI ===")
+    openai_result = extract_with_openai(image_path, document_type)
 
-    # Kept original OpenAI handling for quick re-activation.
-    # logger.info("[OCR] === LEVEL 1: Trying OpenAI ===")
-    # openai_result = extract_with_openai(image_path, document_type)
-    #
-    # if openai_result and isinstance(openai_result, dict) and openai_result.get('isRelevantDocument') == False:
-    #     logger.warning("[OCR] OpenAI detected wrong document")
-    #     return normalize_result({'isRelevantDocument': False, 'source': 'openai', 'confidence': 0.0, 'documentNumber': None, 'holderName': None, 'issueDate': None, 'expiryDate': None, 'issuingOrganization': None, 'detectedDocumentType': openai_result.get('detectedDocumentType'), 'rawExtractedText': openai_result.get('rawExtractedText', ''), 'missingFields': [], 'isExpired': False, 'documentQuality': 'POOR', 'warnings': [], 'rejectionReason': openai_result.get('rejectionReason')}, document_type)
-    #
-    # if openai_result and isinstance(openai_result, dict) and openai_result.get('confidence', 0) > 0.4:
-    #     logger.info("[OCR] OpenAI confidence > 0.4")
-    #     return normalize_result(openai_result, document_type)
-    #
-    # logger.warning("[OCR] OpenAI failed - trying Gemini")
+    if openai_result and isinstance(openai_result, dict) and openai_result.get('isRelevantDocument') == False:
+        logger.warning("[OCR] OpenAI detected wrong document")
+        return normalize_result({'isRelevantDocument': False, 'source': 'openai', 'confidence': 0.0, 'documentNumber': None, 'holderName': None, 'issueDate': None, 'expiryDate': None, 'issuingOrganization': None, 'detectedDocumentType': openai_result.get('detectedDocumentType'), 'rawExtractedText': openai_result.get('rawExtractedText', ''), 'missingFields': [], 'isExpired': False, 'documentQuality': 'POOR', 'warnings': [], 'rejectionReason': openai_result.get('rejectionReason')}, document_type)
+
+    if openai_result and isinstance(openai_result, dict) and openai_result.get('confidence', 0) > 0.4:
+        logger.info("[OCR] OpenAI confidence > 0.4")
+        return normalize_result(openai_result, document_type)
 
     logger.warning("[OCR] OpenAI failed - trying Gemini")
+
     logger.info("[OCR] === LEVEL 2: Trying Gemini ===")
     gemini_result = extract_with_gemini(image_path, document_type)
 
